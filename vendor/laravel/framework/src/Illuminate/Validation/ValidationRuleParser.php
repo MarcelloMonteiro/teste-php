@@ -5,7 +5,6 @@ namespace Illuminate\Validation;
 use Closure;
 use Illuminate\Contracts\Validation\InvokableRule;
 use Illuminate\Contracts\Validation\Rule as RuleContract;
-use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Exists;
@@ -114,7 +113,7 @@ class ValidationRuleParser
             $rule = new ClosureValidationRule($rule);
         }
 
-        if ($rule instanceof InvokableRule || $rule instanceof ValidationRule) {
+        if ($rule instanceof InvokableRule) {
             $rule = InvokableValidationRule::make($rule);
         }
 
@@ -127,7 +126,7 @@ class ValidationRuleParser
 
         if ($rule instanceof NestedRules) {
             return $rule->compile(
-                $attribute, $this->data[$attribute] ?? null, Arr::dot($this->data), $this->data
+                $attribute, $this->data[$attribute] ?? null, Arr::dot($this->data)
             )->rules[$attribute];
         }
 
@@ -144,7 +143,7 @@ class ValidationRuleParser
      */
     protected function explodeWildcardRules($results, $attribute, $rules)
     {
-        $pattern = str_replace('\*', '[^\.]*', preg_quote($attribute, '/'));
+        $pattern = str_replace('\*', '[^\.]*', preg_quote($attribute));
 
         $data = ValidationData::initializeAndGatherData($attribute, $this->data);
 
@@ -152,9 +151,7 @@ class ValidationRuleParser
             if (Str::startsWith($key, $attribute) || (bool) preg_match('/^'.$pattern.'\z/', $key)) {
                 foreach ((array) $rules as $rule) {
                     if ($rule instanceof NestedRules) {
-                        $context = Arr::get($this->data, Str::beforeLast($key, '.'));
-
-                        $compiled = $rule->compile($key, $value, $data, $context);
+                        $compiled = $rule->compile($key, $value, $data);
 
                         $this->implicitAttributes = array_merge_recursive(
                             $compiled->implicitAttributes,
@@ -312,7 +309,7 @@ class ValidationRuleParser
     }
 
     /**
-     * Expand the conditional rules in the given array of rules.
+     * Expand and conditional rules in the given array of rules.
      *
      * @param  array  $rules
      * @param  array  $data

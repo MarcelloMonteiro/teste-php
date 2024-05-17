@@ -5,7 +5,6 @@ namespace Illuminate\Console\Scheduling;
 use Closure;
 use Cron\CronExpression;
 use GuzzleHttp\Client as HttpClient;
-use GuzzleHttp\ClientInterface as HttpClientInterface;
 use GuzzleHttp\Exception\TransferException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -16,14 +15,13 @@ use Illuminate\Support\Reflector;
 use Illuminate\Support\Stringable;
 use Illuminate\Support\Traits\Macroable;
 use Illuminate\Support\Traits\ReflectsClosures;
-use Illuminate\Support\Traits\Tappable;
 use Psr\Http\Client\ClientExceptionInterface;
 use Symfony\Component\Process\Process;
 use Throwable;
 
 class Event
 {
-    use Macroable, ManagesFrequencies, ReflectsClosures, Tappable;
+    use Macroable, ManagesFrequencies, ReflectsClosures;
 
     /**
      * The command string.
@@ -38,13 +36,6 @@ class Event
      * @var string
      */
     public $expression = '* * * * *';
-
-    /**
-     * How often to repeat the event during a minute.
-     *
-     * @var int|null
-     */
-    public $repeatSeconds = null;
 
     /**
      * The timezone the date should be evaluated on.
@@ -166,15 +157,6 @@ class Event
     public $mutexNameResolver;
 
     /**
-     * The last time the event was checked for eligibility to run.
-     *
-     * Utilized by sub-minute repeated events.
-     *
-     * @var \Illuminate\Support\Carbon|null
-     */
-    protected $lastChecked;
-
-    /**
      * The exit status code of the command.
      *
      * @var int|null
@@ -237,27 +219,6 @@ class Event
     public function shouldSkipDueToOverlapping()
     {
         return $this->withoutOverlapping && ! $this->mutex->create($this);
-    }
-
-    /**
-     * Determine if the event has been configured to repeat multiple times per minute.
-     *
-     * @return bool
-     */
-    public function isRepeatable()
-    {
-        return ! is_null($this->repeatSeconds);
-    }
-
-    /**
-     * Determine if the event is ready to repeat.
-     *
-     * @return bool
-     */
-    public function shouldRepeatNow()
-    {
-        return $this->isRepeatable()
-            && $this->lastChecked?->diffInSeconds() >= $this->repeatSeconds;
     }
 
     /**
@@ -409,8 +370,6 @@ class Event
      */
     public function filtersPass($app)
     {
-        $this->lastChecked = Date::now();
-
         foreach ($this->filters as $callback) {
             if (! $app->call($callback)) {
                 return false;
@@ -638,31 +597,12 @@ class Event
      */
     protected function pingCallback($url)
     {
-        return function (Container $container) use ($url) {
+        return function (Container $container, HttpClient $http) use ($url) {
             try {
-                $this->getHttpClient($container)->request('GET', $url);
+                $http->request('GET', $url);
             } catch (ClientExceptionInterface|TransferException $e) {
                 $container->make(ExceptionHandler::class)->report($e);
             }
-        };
-    }
-
-    /**
-     * Get the Guzzle HTTP client to use to send pings.
-     *
-     * @param  \Illuminate\Contracts\Container\Container  $container
-     * @return \GuzzleHttp\ClientInterface
-     */
-    protected function getHttpClient(Container $container)
-    {
-        return match (true) {
-            $container->bound(HttpClientInterface::class) => $container->make(HttpClientInterface::class),
-            $container->bound(HttpClient::class) => $container->make(HttpClient::class),
-            default => new HttpClient([
-                'connect_timeout' => 10,
-                'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
-                'timeout' => 30,
-            ]),
         };
     }
 
